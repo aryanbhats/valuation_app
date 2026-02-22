@@ -98,6 +98,7 @@ body {
     margin-bottom: 2rem;
 }
 
+/* DEPRECATED: Using Apple-style white cards from styles_professional.css instead
 .stat-card {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -105,6 +106,7 @@ body {
     border-radius: 12px;
     box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
 }
+*/
 
 .stat-label {
     font-size: 0.9rem;
@@ -125,13 +127,16 @@ body {
     margin-bottom: 2rem;
 }
 
+/* DEPRECATED: Overridden by styles_professional.css
 .rec-card {
     padding: 1.5rem;
     border-radius: 12px;
     text-align: center;
     color: white;
 }
+*/
 
+/* DEPRECATED: Using semantic border colors from styles_professional.css instead
 .rec-card.buy {
     background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
 }
@@ -143,6 +148,7 @@ body {
 .rec-card.sell {
     background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
 }
+*/
 
 .rec-card h3 {
     font-size: 1rem;

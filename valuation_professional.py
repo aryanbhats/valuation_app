@@ -228,14 +228,43 @@ def enhanced_dcf_valuation(company_data):
 	
 	for year in range(1, 11):
 		growth_rate = growth_schedule[year-1]
+		prev_revenue = current_revenue
 		current_revenue *= (1 + growth_rate)
 		
-		year_ebitda = current_revenue * (ebitda / revenue)
+		# *** KEY FIX: Add margin compression for high-margin companies ***
+		# Realistic assumption: margins compress as companies scale and face competition
+		current_ebitda_margin = ebitda / revenue
+		if current_ebitda_margin > 0.50:
+			# High-margin companies (>50%, e.g., NVIDIA 66%)
+			# Gradually compress toward 40% over 10 years
+			target_margin = 0.40
+			compression_rate = (current_ebitda_margin - target_margin) / 10
+			year_ebitda_margin = current_ebitda_margin - (compression_rate * year)
+		elif current_ebitda_margin > 0.30:
+			# Mid-high margin (30-50%)
+			# Gradually compress toward 25%
+			target_margin = 0.25
+			compression_rate = (current_ebitda_margin - target_margin) / 10
+			year_ebitda_margin = current_ebitda_margin - (compression_rate * year)
+		else:
+			# Low-margin companies maintain margins
+			year_ebitda_margin = current_ebitda_margin
+		
+		year_ebitda = current_revenue * year_ebitda_margin
 		year_da = current_revenue * (depreciation / revenue)
 		year_ebit = year_ebitda - year_da
 		year_nopat = year_ebit * (1 - tax_rate)
 		year_capex = current_revenue * capex_pct
-		year_wc = wc_change * (1 + growth_rate) ** year
+		
+		# *** KEY FIX: Fix working capital calculation ***
+		# WC should scale linearly with revenue growth, not compound
+		# Change in WC = revenue increase * WC-to-Revenue ratio (typically 10-15%)
+		revenue_increase = current_revenue - prev_revenue
+		if revenue_increase > 0:
+			year_wc = revenue_increase * 0.12  # 12% WC/Revenue assumption
+		else:
+			year_wc = 0
+		
 		year_fcf = year_nopat + year_da - year_capex - year_wc
 		
 		discount_factor = 1 / ((1 + wacc) ** year)

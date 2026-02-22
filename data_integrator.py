@@ -1,203 +1,396 @@
 """
 Institutional-Grade Data Integration Module
-Auto-populates company financials from multiple sources
+Auto-populates company financials from Alpha Vantage and FRED APIs
 """
 
-import yfinance as yf
+from alpha_vantage.timeseries import TimeSeries
+from alpha_vantage.fundamentaldata import FundamentalData
 import pandas as pd
 import numpy as np
-import time
+import requests
+import random
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 import logging
+import time
+from functools import lru_cache
+from config import Config
 
 logger = logging.getLogger(__name__)
 
 
 class DataIntegrator:
     """
-    Fetches real-time and historical data from Yahoo Finance and other sources.
+    Fetches real-time and historical data from Alpha Vantage and FRED APIs.
     Automatically populates all required fields for DCF valuation.
     """
-
-    # Class-level cache for treasury rate (shared across all instances)
-    _treasury_cache = None
-    _treasury_cache_time = 0
-    _TREASURY_CACHE_DURATION = 3600  # 1 hour in seconds
+    
+    # Class-level cache for Treasury rate (shared across instances)
+    _cached_risk_free_rate = None
+    _cache_timestamp = None
+    _cache_duration = Config.TREASURY_RATE_CACHE_DURATION  # 24 hours
+    
+    # Class-level cache for company data (shared across instances)
+    _company_data_cache = {}  # {ticker: (data, timestamp)}
+    _company_cache_duration = Config.COMPANY_DATA_CACHE_DURATION  # 6 hours
+    
+    # Circuit breaker for rate limiting (shared across instances)
+    _consecutive_429_errors = 0
+    _circuit_breaker_until = None
+    _max_429_errors = Config.CIRCUIT_BREAKER_THRESHOLD
+    _circuit_breaker_duration = Config.CIRCUIT_BREAKER_DURATION
 
     def __init__(self):
+        # Initialize Alpha Vantage clients
+        self.api_key = Config.ALPHA_VANTAGE_API_KEY
+        if not self.api_key:
+            raise ValueError("ALPHA_VANTAGE_API_KEY not found in configuration")
+        
+        self.ts = TimeSeries(key=self.api_key, output_format='pandas')
+        self.fd = FundamentalData(key=self.api_key, output_format='pandas')
+        
         self.risk_free_rate = self._get_risk_free_rate()
         self.market_risk_premium = 0.065  # Historical US equity risk premium
+        self._request_delay = Config.API_REQUEST_DELAY  # 12 seconds for Alpha Vantage (5 calls/min)
+    
+    def _check_circuit_breaker(self) -> bool:
+        """Check if circuit breaker is active. Returns True if requests should be blocked."""
+        if DataIntegrator._circuit_breaker_until is not None:
+            if datetime.now() < DataIntegrator._circuit_breaker_until:
+                remaining = (DataIntegrator._circuit_breaker_until - datetime.now()).total_seconds()
+                logger.warning(f"⚠️ Circuit breaker active. Requests blocked for {remaining:.0f} more seconds.")
+                return True
+            else:
+                # Circuit breaker expired, reset
+                logger.info("✅ Circuit breaker expired. Resuming requests.")
+                DataIntegrator._circuit_breaker_until = None
+                DataIntegrator._consecutive_429_errors = 0
+        return False
+    
+    def _trigger_circuit_breaker(self):
+        """Trigger circuit breaker after too many 429 errors"""
+        DataIntegrator._consecutive_429_errors += 1
+        if DataIntegrator._consecutive_429_errors >= DataIntegrator._max_429_errors:
+            DataIntegrator._circuit_breaker_until = datetime.now() + timedelta(seconds=DataIntegrator._circuit_breaker_duration)
+            logger.error(f"🚨 Circuit breaker triggered! Too many rate limit errors. Pausing requests for {DataIntegrator._circuit_breaker_duration}s.")
+    
+    def _reset_circuit_breaker(self):
+        """Reset circuit breaker after successful request"""
+        if DataIntegrator._consecutive_429_errors > 0:
+            DataIntegrator._consecutive_429_errors = 0
+            logger.debug("Circuit breaker error count reset.")
+    
+    def _get_delay_with_jitter(self) -> float:
+        """Get request delay with random jitter to avoid predictable patterns"""
+        jitter = random.uniform(-0.5, 0.5)
+        return max(0.5, self._request_delay + jitter)  # Ensure minimum 0.5s delay
 
     def _get_risk_free_rate(self) -> float:
-        """Get current 10-year Treasury rate as risk-free rate (with 1-hour caching)"""
-        # Check if we have a cached rate that's still fresh
-        if (DataIntegrator._treasury_cache is not None and
-            time.time() - DataIntegrator._treasury_cache_time < DataIntegrator._TREASURY_CACHE_DURATION):
-            cached_age = int(time.time() - DataIntegrator._treasury_cache_time)
-            logger.info(f"✅ Using cached treasury rate: {DataIntegrator._treasury_cache*100:.2f}% (cached {cached_age}s ago)")
-            return DataIntegrator._treasury_cache
-
-        # Cache expired or doesn't exist, fetch new rate
+        """Get current 10-year Treasury rate from FRED API (with caching)"""
+        # Check cache first
+        now = datetime.now()
+        if (DataIntegrator._cached_risk_free_rate is not None and 
+            DataIntegrator._cache_timestamp is not None):
+            elapsed = (now - DataIntegrator._cache_timestamp).total_seconds()
+            if elapsed < DataIntegrator._cache_duration:
+                logger.debug(f"Using cached risk-free rate: {DataIntegrator._cached_risk_free_rate*100:.2f}%")
+                return DataIntegrator._cached_risk_free_rate
+        
+        # Fetch new rate from FRED API
         try:
-            # Use ^TNX (10-year Treasury yield)
-            tnx = yf.Ticker("^TNX")
-            hist = tnx.history(period="5d")
-            if not hist.empty:
-                rate = hist['Close'].iloc[-1] / 100  # Convert from percentage
-                logger.info(f"✅ Fetched fresh treasury rate: {rate*100:.2f}% (will cache for 1 hour)")
-
-                # Update cache
-                DataIntegrator._treasury_cache = rate
-                DataIntegrator._treasury_cache_time = time.time()
-
-                return rate
-            else:
-                logger.warning("Could not fetch Treasury rate, using default 4.5%")
-                return 0.045
+            logger.info("Fetching Treasury rate from FRED API...")
+            rate = self._fetch_treasury_rate_from_fred()
+            
+            # Update cache
+            DataIntegrator._cached_risk_free_rate = rate
+            DataIntegrator._cache_timestamp = now
+            
+            logger.info(f"Risk-free rate (10Y Treasury): {rate*100:.2f}%")
+            return rate
         except Exception as e:
-            logger.error(f"Error fetching risk-free rate: {e}")
+            logger.error(f"Error fetching risk-free rate from FRED: {e}")
+            # Use cached value if available, otherwise default
+            if DataIntegrator._cached_risk_free_rate is not None:
+                logger.warning(f"Using stale cached rate: {DataIntegrator._cached_risk_free_rate*100:.2f}%")
+                return DataIntegrator._cached_risk_free_rate
             return 0.045  # Default fallback
+    
+    def _fetch_treasury_rate_from_fred(self) -> float:
+        """Fetch 10-Year Treasury rate from FRED API"""
+        try:
+            fred_api_key = Config.FRED_API_KEY
+            if not fred_api_key:
+                logger.warning("FRED_API_KEY not configured, using default 4.5%")
+                return 0.045
+            
+            url = f"{Config.FRED_BASE_URL}/series/observations"
+            params = {
+                'series_id': 'DGS10',  # 10-Year Treasury Constant Maturity Rate
+                'api_key': fred_api_key,
+                'limit': 1,
+                'sort_order': 'desc',
+                'file_type': 'json'
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if 'observations' in data and len(data['observations']) > 0:
+                rate_str = data['observations'][0]['value']
+                if rate_str != '.':  # FRED returns '.' for missing data
+                    rate = float(rate_str) / 100  # Convert from percentage
+                    self._reset_circuit_breaker()
+                    return rate
+            
+            logger.warning("Could not fetch Treasury rate from FRED, using default 4.5%")
+            return 0.045
+            
+        except Exception as e:
+            logger.error(f"Error fetching from FRED API: {e}")
+            return 0.045
 
-    def get_company_data(self, ticker: str) -> Optional[Dict]:
+    def get_company_data(self, ticker: str, max_retries=3) -> Optional[Dict]:
         """
-        Fetch comprehensive company data from Yahoo Finance.
+        Fetch comprehensive company data from Alpha Vantage with retry logic.
         Returns all data needed for DCF valuation.
 
         Args:
             ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+            max_retries: Number of retry attempts for rate-limited requests
 
         Returns:
             Dictionary with complete financial data, or None if ticker not found
         """
-        try:
-            logger.info(f"Fetching data for ticker: {ticker}")
-
-            stock = yf.Ticker(ticker)
-            info = stock.info
-
-            # Verify ticker is valid
-            if not info or 'symbol' not in info:
-                logger.error(f"Invalid ticker: {ticker}")
-                return None
-
-            # Get financial statements
-            financials = stock.financials
-            balance_sheet = stock.balance_sheet
-            cash_flow = stock.cashflow
-
-            # Get historical prices for beta calculation
-            hist = stock.history(period="5y")
-
-            # Extract key data
-            data = {
-                'ticker': ticker.upper(),
-                'name': info.get('longName', ticker.upper()),
-                'sector': info.get('sector', 'Unknown'),
-                'industry': info.get('industry', 'Unknown'),
-                'current_price': info.get('currentPrice', info.get('regularMarketPrice', 0)),
-                'market_cap': info.get('marketCap', 0),
-            }
-
-            # Extract financials (most recent year)
-            if not financials.empty:
-                latest_financials = financials.iloc[:, 0]
-
-                data['revenue'] = latest_financials.get('Total Revenue', 0)
-                data['ebitda'] = latest_financials.get('EBITDA', 0)
-
-                # Calculate net income / profit margin
-                net_income = latest_financials.get('Net Income', 0)
-                data['profit_margin'] = net_income / data['revenue'] if data['revenue'] > 0 else 0.10
-
-            else:
-                logger.warning(f"No financials found for {ticker}")
-                data['revenue'] = info.get('totalRevenue', 0)
-                data['ebitda'] = info.get('ebitda', 0)
-                data['profit_margin'] = 0.10
-
-            # Balance sheet items
-            if not balance_sheet.empty:
-                latest_bs = balance_sheet.iloc[:, 0]
-                data['debt'] = latest_bs.get('Total Debt', latest_bs.get('Long Term Debt', 0))
-                data['cash'] = latest_bs.get('Cash And Cash Equivalents', 0)
-            else:
-                data['debt'] = info.get('totalDebt', 0)
-                data['cash'] = info.get('totalCash', 0)
-
-            # Cash flow items
-            if not cash_flow.empty:
-                latest_cf = cash_flow.iloc[:, 0]
-
-                data['depreciation'] = abs(latest_cf.get('Depreciation And Amortization', 0))
-                capex = abs(latest_cf.get('Capital Expenditure', 0))
-                data['capex_pct'] = capex / data['revenue'] if data['revenue'] > 0 else 0.05
-                data['working_capital_change'] = latest_cf.get('Change In Working Capital', 0)
-            else:
-                data['depreciation'] = data['ebitda'] * 0.05 if data['ebitda'] > 0 else 0
-                data['capex_pct'] = 0.05
-                data['working_capital_change'] = 0
-
-            # Shares outstanding
-            data['shares_outstanding'] = info.get('sharesOutstanding', 1_000_000)
-
-            # Growth rates from analyst estimates
-            growth_estimates = self._get_growth_estimates(info, financials)
-            data['growth_rate_y1'] = growth_estimates['y1']
-            data['growth_rate_y2'] = growth_estimates['y2']
-            data['growth_rate_y3'] = growth_estimates['y3']
-            data['terminal_growth'] = growth_estimates['terminal']
-
-            # Tax rate
-            data['tax_rate'] = self._estimate_tax_rate(financials, info)
-
-            # Risk parameters
-            data['beta'] = self._calculate_beta(hist, ticker)
-            data['risk_free_rate'] = self.risk_free_rate
-            data['market_risk_premium'] = self.market_risk_premium
-            data['country_risk_premium'] = 0.0  # US = 0, adjust for international
-            data['size_premium'] = self._estimate_size_premium(data['market_cap'])
-
-            # Comparable company multiples
-            comp_multiples = self._get_comparable_multiples(info, data)
-            data['comparable_ev_ebitda'] = comp_multiples['ev_ebitda']
-            data['comparable_pe'] = comp_multiples['pe']
-            data['comparable_peg'] = comp_multiples['peg']
-
-            # Additional metadata
-            data['data_source'] = 'Yahoo Finance'
-            data['last_updated'] = datetime.now().isoformat()
-
-            logger.info(f"Successfully fetched data for {data['name']}")
-            return data
-
-        except Exception as e:
-            logger.error(f"Error fetching data for {ticker}: {str(e)}", exc_info=True)
+        # Check cache first (critical with 25 API calls/day limit!)
+        if ticker in DataIntegrator._company_data_cache:
+            cached_data, cached_time = DataIntegrator._company_data_cache[ticker]
+            elapsed = (datetime.now() - cached_time).total_seconds()
+            if elapsed < DataIntegrator._company_cache_duration:
+                logger.info(f"✅ Using cached data for {ticker} (cached {int(elapsed)}s ago)")
+                return cached_data
+        
+        # Check circuit breaker
+        if self._check_circuit_breaker():
+            logger.error(f"Cannot fetch {ticker} - circuit breaker active")
             return None
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Fetching data for ticker: {ticker} from Alpha Vantage (attempt {attempt + 1}/{max_retries})")
+                
+                # Add delay to respect rate limits (except first attempt)
+                if attempt > 0:
+                    wait_time = (2 ** attempt) * self._get_delay_with_jitter()
+                    logger.info(f"Waiting {wait_time:.1f}s before retry...")
+                    time.sleep(wait_time)
 
-    def _get_growth_estimates(self, info: dict, financials: pd.DataFrame) -> Dict[str, float]:
+                # API Call 1: Company Overview
+                logger.debug(f"Fetching overview for {ticker}...")
+                overview, meta = self.fd.get_company_overview(symbol=ticker)
+                
+                # Verify ticker is valid
+                if overview.empty or 'Symbol' not in overview.columns:
+                    logger.error(f"Invalid ticker: {ticker}")
+                    return None
+                
+                overview_data = overview.iloc[0]
+                time.sleep(self._get_delay_with_jitter())  # 12s delay between calls
+                
+                # API Call 2: Income Statement
+                logger.debug(f"Fetching income statement for {ticker}...")
+                income_annual, meta = self.fd.get_income_statement_annual(symbol=ticker)
+                time.sleep(self._get_delay_with_jitter())
+                
+                # API Call 3: Balance Sheet
+                logger.debug(f"Fetching balance sheet for {ticker}...")
+                balance_annual, meta = self.fd.get_balance_sheet_annual(symbol=ticker)
+                time.sleep(self._get_delay_with_jitter())
+                
+                # API Call 4: Cash Flow Statement
+                logger.debug(f"Fetching cash flow for {ticker}...")
+                cashflow_annual, meta = self.fd.get_cash_flow_annual(symbol=ticker)
+                time.sleep(self._get_delay_with_jitter())
+                
+                # API Call 5: Historical Prices for Beta (using free tier endpoint)
+                logger.debug(f"Fetching historical prices for {ticker}...")
+                # Use get_daily instead of get_daily_adjusted (free tier)
+                # outputsize='compact' gives ~100 days (free), 'full' requires premium for adjusted data
+                hist, meta = self.ts.get_daily(symbol=ticker, outputsize='compact')
+                # We'll use what we can get (~100 days for free tier)
+
+                # Extract key data from overview
+                data = {
+                    'ticker': ticker.upper(),
+                    'name': overview_data.get('Name', ticker.upper()),
+                    'sector': overview_data.get('Sector', 'Unknown'),
+                    'industry': overview_data.get('Industry', 'Unknown'),
+                    'current_price': self._safe_float(overview_data.get('50DayMovingAverage', 0)),
+                    'market_cap': self._safe_float(overview_data.get('MarketCapitalization', 0)),
+                }
+
+                # Extract financials (most recent year)
+                if not income_annual.empty:
+                    latest_income = income_annual.iloc[0]
+
+                    data['revenue'] = self._safe_float(latest_income.get('totalRevenue', 0))
+                    data['ebitda'] = self._safe_float(latest_income.get('ebitda', 0))
+
+                    # Calculate net income / profit margin
+                    net_income = self._safe_float(latest_income.get('netIncome', 0))
+                    data['profit_margin'] = net_income / data['revenue'] if data['revenue'] > 0 else 0.10
+
+                else:
+                    logger.warning(f"No income statement found for {ticker}")
+                    data['revenue'] = self._safe_float(overview_data.get('RevenueTTM', 0))
+                    data['ebitda'] = self._safe_float(overview_data.get('EBITDA', 0))
+                    data['profit_margin'] = 0.10
+
+                # Balance sheet items
+                if not balance_annual.empty:
+                    latest_bs = balance_annual.iloc[0]
+                    # Alpha Vantage uses different field names
+                    debt = self._safe_float(latest_bs.get('longTermDebt', 0))
+                    if debt == 0:
+                        debt = self._safe_float(latest_bs.get('shortLongTermDebtTotal', 0))
+                    data['debt'] = debt
+                    data['cash'] = self._safe_float(latest_bs.get('cashAndCashEquivalentsAtCarryingValue', 0))
+                else:
+                    data['debt'] = 0
+                    data['cash'] = 0
+
+                # Cash flow items
+                if not cashflow_annual.empty:
+                    latest_cf = cashflow_annual.iloc[0]
+
+                    data['depreciation'] = abs(self._safe_float(latest_cf.get('depreciationDepletionAndAmortization', 0)))
+                    capex = abs(self._safe_float(latest_cf.get('capitalExpenditures', 0)))
+                    data['capex_pct'] = capex / data['revenue'] if data['revenue'] > 0 else 0.05
+                    
+                    # Working capital change (sum of operating assets and liabilities changes)
+                    wc_assets = self._safe_float(latest_cf.get('changeInOperatingAssets', 0))
+                    wc_liab = self._safe_float(latest_cf.get('changeInOperatingLiabilities', 0))
+                    data['working_capital_change'] = wc_assets + wc_liab
+                else:
+                    data['depreciation'] = data['ebitda'] * 0.05 if data['ebitda'] > 0 else 0
+                    data['capex_pct'] = 0.05
+                    data['working_capital_change'] = 0
+
+                # Shares outstanding
+                data['shares_outstanding'] = self._safe_float(overview_data.get('SharesOutstanding', 1_000_000))
+
+                # Growth rates from historical data
+                growth_estimates = self._get_growth_estimates_av(overview_data, income_annual)
+                data['growth_rate_y1'] = growth_estimates['y1']
+                data['growth_rate_y2'] = growth_estimates['y2']
+                data['growth_rate_y3'] = growth_estimates['y3']
+                data['terminal_growth'] = growth_estimates['terminal']
+
+                # Tax rate
+                data['tax_rate'] = self._estimate_tax_rate_av(income_annual)
+
+                # Risk parameters
+                data['beta'] = self._calculate_beta_av(hist, ticker)
+                data['risk_free_rate'] = self.risk_free_rate
+                data['market_risk_premium'] = self.market_risk_premium
+                data['country_risk_premium'] = 0.0  # US = 0, adjust for international
+                data['size_premium'] = self._estimate_size_premium(data['market_cap'])
+
+                # Comparable company multiples
+                comp_multiples = self._get_comparable_multiples_av(overview_data, data)
+                data['comparable_ev_ebitda'] = comp_multiples['ev_ebitda']
+                data['comparable_pe'] = comp_multiples['pe']
+                data['comparable_peg'] = comp_multiples['peg']
+
+                # Additional metadata
+                data['data_source'] = 'Alpha Vantage'
+                data['last_updated'] = datetime.now().isoformat()
+                
+                # Cache the successfully fetched data
+                DataIntegrator._company_data_cache[ticker] = (data, datetime.now())
+                logger.info(f"✅ Successfully cached data for {ticker}")
+                
+                # Reset circuit breaker on success
+                self._reset_circuit_breaker()
+                
+                # Successfully fetched data, return it
+                return data
+                
+            except Exception as e:
+                error_msg = str(e)
+                # Check if it's a rate limiting error (429)
+                if '429' in error_msg or 'Too Many Requests' in error_msg or 'limit' in error_msg.lower():
+                    logger.error(f"⚠️ Rate limit error for {ticker}")
+                    self._trigger_circuit_breaker()
+                    
+                    if attempt < max_retries - 1:
+                        wait_time = (2 ** (attempt + 1)) * self._get_delay_with_jitter()
+                        logger.warning(f"Retrying in {wait_time:.1f}s... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error(f"🚨 Rate limit exceeded for {ticker} after {max_retries} attempts")
+                        return None
+                else:
+                    # Other errors, log and potentially retry
+                    logger.error(f"Error fetching data for {ticker}: {error_msg}", exc_info=True)
+                    if attempt < max_retries - 1:
+                        wait_time = self._get_delay_with_jitter()
+                        logger.info(f"Retrying in {wait_time:.1f}s... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        return None
+        
+        # If we exhausted all retries
+        return None
+    
+    def _safe_float(self, value, default=0.0) -> float:
+        """Safely convert value to float"""
+        try:
+            if value is None or value == 'None' or value == '':
+                return default
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+
+    def _get_growth_estimates_av(self, overview: pd.Series, income_annual: pd.DataFrame) -> Dict[str, float]:
         """
-        Estimate revenue growth rates from analyst estimates and historical trends.
+        Estimate revenue growth rates with aggressive normalization for high-growth companies.
+        Applies S-curve fade-out so extreme growth rates (40%+) don't create inflated valuations.
         """
         try:
-            # Try to get analyst growth estimates
-            analyst_growth = info.get('revenueGrowth')
-            if analyst_growth and analyst_growth > 0:
-                y1_growth = min(analyst_growth, 0.50)  # Cap at 50%
+            # Try to get quarterly growth from overview
+            quarterly_growth = self._safe_float(overview.get('QuarterlyRevenueGrowthYOY'))
+            if quarterly_growth and quarterly_growth > 0:
+                y1_growth = min(quarterly_growth, 0.50)  # Cap at 50%
             else:
-                # Calculate historical growth
-                if not financials.empty and len(financials.columns) >= 2:
-                    recent_revenue = financials.iloc[:, 0].get('Total Revenue', 0)
-                    prior_revenue = financials.iloc[:, 1].get('Total Revenue', 1)
+                # Calculate historical growth from income statements
+                if not income_annual.empty and len(income_annual) >= 2:
+                    recent_revenue = self._safe_float(income_annual.iloc[0].get('totalRevenue', 0))
+                    prior_revenue = self._safe_float(income_annual.iloc[1].get('totalRevenue', 1))
                     y1_growth = (recent_revenue / prior_revenue - 1) if prior_revenue > 0 else 0.10
                 else:
                     y1_growth = 0.10  # Default 10%
 
-            # Multi-stage growth (declining over time)
             y1_growth = max(0, min(y1_growth, 0.50))  # Between 0% and 50%
-            y2_growth = y1_growth * 0.85  # Moderate to 85% of Y1
-            y3_growth = y1_growth * 0.70  # Further moderate to 70% of Y1
-            terminal_growth = 0.025  # Long-term GDP growth
+            
+            # *** KEY FIX: Aggressive fade-out for high-growth companies ***
+            # High growth rates are unsustainable - apply market saturation curve
+            if y1_growth >= 0.40:
+                # Tech/AI companies (e.g., NVIDIA 50%) - steep decline
+                y2_growth = y1_growth * 0.60  # Drop to 30% (from 50%)
+                y3_growth = y1_growth * 0.30  # Drop to 15% (from 50%)
+            elif y1_growth >= 0.25:
+                # Fast-growth (25-40%) - moderate decline
+                y2_growth = y1_growth * 0.70
+                y3_growth = y1_growth * 0.50
+            else:
+                # Stable growth <25% - gentle decline
+                y2_growth = y1_growth * 0.85
+                y3_growth = y1_growth * 0.70
+            
+            terminal_growth = 0.025  # GDP growth rate
 
             return {
                 'y1': y1_growth,
@@ -209,13 +402,13 @@ class DataIntegrator:
             logger.warning(f"Could not estimate growth rates: {e}")
             return {'y1': 0.10, 'y2': 0.08, 'y3': 0.06, 'terminal': 0.025}
 
-    def _estimate_tax_rate(self, financials: pd.DataFrame, info: dict) -> float:
-        """Calculate effective tax rate from financial statements"""
+    def _estimate_tax_rate_av(self, income_annual: pd.DataFrame) -> float:
+        """Calculate effective tax rate from Alpha Vantage income statement"""
         try:
-            if not financials.empty:
-                latest = financials.iloc[:, 0]
-                pretax_income = latest.get('Pretax Income', 0)
-                tax_provision = latest.get('Tax Provision', 0)
+            if not income_annual.empty:
+                latest = income_annual.iloc[0]
+                pretax_income = self._safe_float(latest.get('incomeBeforeTax', 0))
+                tax_provision = self._safe_float(latest.get('incomeTaxExpense', 0))
 
                 if pretax_income > 0:
                     effective_rate = tax_provision / pretax_income
@@ -226,23 +419,26 @@ class DataIntegrator:
         except:
             return 0.21
 
-    def _calculate_beta(self, hist: pd.DataFrame, ticker: str) -> float:
+    def _calculate_beta_av(self, hist: pd.DataFrame, ticker: str) -> float:
         """
-        Calculate beta using 5-year regression against S&P 500.
+        Calculate beta using available historical data from Alpha Vantage.
+        Note: Free tier provides ~100 days of data, so beta will be less accurate than 5-year calculation.
         """
         try:
-            if hist.empty or len(hist) < 252:  # Need at least 1 year
-                logger.warning(f"Insufficient price history for beta calculation")
+            if hist.empty or len(hist) < 20:  # Need at least 20 days
+                logger.warning(f"Insufficient price history for beta calculation (need 20+ days)")
                 return 1.0
 
-            # Get S&P 500 returns
-            spy = yf.Ticker("SPY")
-            spy_hist = spy.history(period="5y")
+            # Get S&P 500 returns from Alpha Vantage (free tier)
+            spy_hist, meta = self.ts.get_daily(symbol='SPY', outputsize='compact')
 
+            # Alpha Vantage returns columns with '4. close' for non-adjusted data
+            stock_col = '4. close'
+            
             # Align dates
             merged = pd.merge(
-                hist[['Close']].rename(columns={'Close': 'stock'}),
-                spy_hist[['Close']].rename(columns={'Close': 'spy'}),
+                hist[[stock_col]].rename(columns={stock_col: 'stock'}),
+                spy_hist[[stock_col]].rename(columns={stock_col: 'spy'}),
                 left_index=True,
                 right_index=True,
                 how='inner'
@@ -252,6 +448,10 @@ class DataIntegrator:
             merged['stock_ret'] = merged['stock'].pct_change()
             merged['spy_ret'] = merged['spy'].pct_change()
             merged = merged.dropna()
+            
+            if len(merged) < 20:
+                logger.warning(f"Insufficient overlapping data for beta calculation")
+                return 1.0
 
             # Calculate beta (covariance / variance)
             covariance = merged['stock_ret'].cov(merged['spy_ret'])
@@ -261,7 +461,7 @@ class DataIntegrator:
             # Reasonable bounds
             beta = max(-2.0, min(beta, 5.0))
 
-            logger.info(f"Calculated beta for {ticker}: {beta:.2f}")
+            logger.info(f"Calculated beta for {ticker}: {beta:.2f} (using {len(merged)} days of data)")
             return beta
 
         except Exception as e:
@@ -282,15 +482,15 @@ class DataIntegrator:
         else:  # Large cap
             return 0.0
 
-    def _get_comparable_multiples(self, info: dict, data: dict) -> Dict[str, float]:
+    def _get_comparable_multiples_av(self, overview: pd.Series, data: dict) -> Dict[str, float]:
         """
-        Extract or estimate comparable company multiples.
+        Extract or estimate comparable company multiples from Alpha Vantage data.
         """
         try:
-            # Try to get from info
-            trailing_pe = info.get('trailingPE', 20.0)
-            forward_pe = info.get('forwardPE', 18.0)
-            peg_ratio = info.get('pegRatio', 1.5)
+            # Try to get from overview
+            trailing_pe = self._safe_float(overview.get('TrailingPE', 20.0))
+            forward_pe = self._safe_float(overview.get('ForwardPE', 18.0))
+            peg_ratio = self._safe_float(overview.get('PEGRatio', 1.5))
 
             # Calculate EV/EBITDA
             enterprise_value = data['market_cap'] + data['debt'] - data['cash']

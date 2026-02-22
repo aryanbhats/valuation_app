@@ -394,30 +394,30 @@ function renderCompanies() {
 
                 <!-- Scenario Selector (Bear/Base/Bull) -->
                 <div class="scenario-selector">
-                    <button class="scenario-btn bear base active" data-scenario="bear" onclick="applyScenarioToCompany(${company.id}, 'bear')" title="Pessimistic scenario">
-                        🐻 Bear
+                    <button class="scenario-btn bear" data-scenario="bear" onclick="applyScenarioToCompany(${company.id}, 'bear')" title="Pessimistic scenario">
+                        Bear
                     </button>
-                    <button class="scenario-btn base" data-scenario="base" onclick="applyScenarioToCompany(${company.id}, 'base')" title="Balanced scenario">
-                        📊 Base
+                    <button class="scenario-btn base active" data-scenario="base" onclick="applyScenarioToCompany(${company.id}, 'base')" title="Balanced scenario">
+                        Base
                     </button>
                     <button class="scenario-btn bull" data-scenario="bull" onclick="applyScenarioToCompany(${company.id}, 'bull')" title="Optimistic scenario">
-                        🐂 Bull
+                        Bull
                     </button>
                 </div>
 
                 <!-- Action Buttons -->
                 <div class="company-actions">
                     <button class="btn btn-primary" onclick="runValuation(${company.id})" title="${company.fair_value ? 'Re-run valuation' : 'Run initial valuation'}">
-                        ${company.fair_value ? '🔄 Revalue' : '💰 Value'}
+                        ${company.fair_value ? 'Revalue' : 'Value'}
                     </button>
                     <button class="btn btn-secondary" onclick="editCompany(${company.id})" title="Edit company details">
-                        ✏️ Edit
+                        Edit
                     </button>
-                    <button class="btn btn-danger" onclick="deleteCompany(${company.id})" title="Delete company">
-                        🗑️
+                    <button class="btn btn-danger btn-icon" onclick="deleteCompany(${company.id})" title="Delete company">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
                     <button class="btn btn-secondary btn-icon" onclick="toggleWatchlist(${company.id})" title="Add to watchlist">
-                        ⭐
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                     </button>
                 </div>
             </div>

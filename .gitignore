@@ -49,4 +49,6 @@ htmlcov/
 .env
 .env.local
 
-app.log
+*.log
+*.backup
+.playwright-mcp/

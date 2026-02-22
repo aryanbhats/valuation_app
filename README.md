@@ -29,12 +29,23 @@ A professional-grade web application for performing CFA-level company valuations
   - Debt coverage ratios
   - Sensitivity analysis
 
-## Installation
+## Setup
 
-1. Install dependencies:
+1. Clone the repo and install dependencies:
 ```bash
+git clone https://github.com/aryanbhats/valuation_app.git
+cd valuation_app
 pip3 install -r requirements.txt
 ```
+
+2. Copy the example environment file and add your API keys:
+```bash
+cp .env.example .env
+```
+
+3. Get free API keys:
+   - **Alpha Vantage** (market data): https://www.alphavantage.co/support/#api-key
+   - **FRED** (Treasury rates): https://fred.stlouisfed.org/docs/api/api_key.html
 
 ## Complete Workflow (End-to-End)
 
@@ -119,11 +130,11 @@ The application uses SQLite for data persistence with three main tables:
 
 ## Technology Stack
 
-- **Backend**: Flask (Python)
-- **Database**: SQLite
+- **Backend**: Flask, Python 3
+- **Database**: SQLite (dev) / PostgreSQL (prod)
 - **Frontend**: HTML, CSS, JavaScript
-- **Styling**: Custom CSS with gradient designs
-- **Valuation Engine**: Custom Python implementation
+- **Data Sources**: Alpha Vantage (financials, prices), FRED (Treasury rates)
+- **Valuation Engine**: Custom Python — DCF, comps, Monte Carlo, Altman Z-Score
 
 ## File Structure
 
@@ -158,8 +169,8 @@ The application uses SQLite for data persistence with three main tables:
 
 ## License
 
-MIT License
+[MIT](LICENSE)
 
 ## Author
 
-Created for professional equity research and investment analysis.
+[Aryan Bhatia](https://linkedin.com/in/aryanbhats)

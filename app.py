@@ -1,9 +1,14 @@
 from flask import Flask, render_template, request, jsonify, send_file
 import sqlite3
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import json
 from datetime import datetime
+import os
+
+# Conditional imports based on database type
+DATABASE_TYPE = os.environ.get('DATABASE_TYPE', 'sqlite')
+if DATABASE_TYPE == 'postgresql':
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
 import io
 import csv
 from pydantic import ValidationError
@@ -824,15 +829,15 @@ def dashboard_stats():
     # Normalize stats and sectors for both SQLite (tuples) and PostgreSQL (dicts)
     result = {
         'total_companies': stats.get('total_companies', 0) if isinstance(stats, dict) else (stats or {}).get('total_companies', 0),
-        'avg_upside': round(stats.get('avg_upside', 0) if isinstance(stats, dict) else 0, 2),
+        'avg_upside': round(stats.get('avg_upside') or 0, 2) if isinstance(stats, dict) else 0,
         'buy_count': stats.get('buy_count', 0) if isinstance(stats, dict) else 0,
         'hold_count': stats.get('hold_count', 0) if isinstance(stats, dict) else 0,
         'sell_count': stats.get('sell_count', 0) if isinstance(stats, dict) else 0,
-        'avg_pe': round(stats.get('avg_pe', 0) if isinstance(stats, dict) else 0, 1),
-        'avg_roe': round(stats.get('avg_roe', 0) if isinstance(stats, dict) else 0, 1),
+        'avg_pe': round(stats.get('avg_pe') or 0, 1) if isinstance(stats, dict) else 0,
+        'avg_roe': round(stats.get('avg_roe') or 0, 1) if isinstance(stats, dict) else 0,
         'total_fair_value': stats.get('total_fair_value', 0) if isinstance(stats, dict) else 0,
         'total_market_cap': stats.get('total_market_cap', 0) if isinstance(stats, dict) else 0,
-        'avg_wacc': round(stats.get('avg_wacc', 0) if isinstance(stats, dict) else 0, 2),
+        'avg_wacc': round(stats.get('avg_wacc') or 0, 2) if isinstance(stats, dict) else 0,
         'sectors': []
     }
 

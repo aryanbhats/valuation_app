@@ -13,13 +13,33 @@
 <body>
     <nav class="navbar">
         <div class="container">
-            <h1 class="logo">📊 Investment Analytics Platform</h1>
+            <h1 class="logo">
+                <span class="icon icon-lg">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>
+                    </svg>
+                </span>
+                Investment Analytics
+            </h1>
             <div class="nav-links">
                 <a href="#" onclick="showView('dashboard')" class="nav-link active" data-view="dashboard">Dashboard</a>
                 <a href="#" onclick="showView('companies')" class="nav-link" data-view="companies">Portfolio</a>
-                <a href="#" onclick="exportCSV()" class="nav-link">Export Data</a>
-                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌓</button>
-                <button class="btn-secondary" onclick="showSettingsModal()" title="Portfolio Settings">⚙️ Settings</button>
+                <a href="#" onclick="exportCSV()" class="nav-link">Export</a>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle theme">
+                    <span class="icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        </svg>
+                    </span>
+                </button>
+                <button class="btn-icon-text" onclick="showSettingsModal()" title="Portfolio Settings">
+                    <span class="icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                        </svg>
+                    </span>
+                    Settings
+                </button>
             </div>
         </div>
     </nav>
@@ -30,7 +50,14 @@
             <!-- Macro Environment Control Panel - Phase 1 -->
             <div class="macro-control-panel">
                 <div class="macro-header">
-                    <h2>🌍 Market Environment</h2>
+                    <h2>
+                        <span class="icon icon-lg" style="color: #0d9488;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                            </svg>
+                        </span>
+                        Market Environment
+                    </h2>
                     <div id="current-macro-status">
                         <span class="macro-status-badge base">Active: Base Case</span>
                     </div>
@@ -66,11 +93,18 @@
                 </div>
             </div>
 
-            <!-- Quick Add by Ticker - NEW FEATURE -->
+            <!-- Quick Add by Ticker -->
             <div class="quick-add-section">
                 <div class="quick-add-card">
                     <div class="quick-add-header">
-                        <h2>🚀 Quick Add Company</h2>
+                        <h2>
+                            <span class="icon icon-lg">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                                </svg>
+                            </span>
+                            Quick Add Company
+                        </h2>
                         <p>Enter any US stock ticker to automatically import and value</p>
                     </div>
                     <div class="quick-add-form">
@@ -267,59 +301,6 @@
                         </div>
                     </div>
 
-                            <!-- Settings Modal -->
-                            <div id="settings-modal" class="modal">
-                                <div class="modal-content small">
-                                    <div class="modal-header">
-                                        <h2>Portfolio Settings</h2>
-                                        <span class="close" onclick="closeSettingsModal()">&times;</span>
-                                    </div>
-                                    <div class="modal-body">
-                                        <form id="settings-form">
-                                            <div class="form-group">
-                                                <label>Strong Buy Threshold (%)</label>
-                                                <input type="number" step="0.1" id="th-strong-buy">
-                                            </div>
-                                            <div class="form-group">
-                                                <label>Buy Threshold (%)</label>
-                                                <input type="number" step="0.1" id="th-buy">
-                                            </div>
-                                            <div class="form-group">
-                                                <label>Hold Threshold (%)</label>
-                                                <input type="number" step="0.1" id="th-hold">
-                                            </div>
-                                            <div class="form-group">
-                                                <label>Underweight Threshold (%)</label>
-                                                <input type="number" step="0.1" id="th-underweight">
-                                            </div>
-
-                                            <div class="form-group">
-                                                <label>DCF Weight</label>
-                                                <input type="number" step="0.01" id="w-dcf">
-                                            </div>
-                                            <div class="form-group">
-                                                <label>EV/EBITDA Weight</label>
-                                                <input type="number" step="0.01" id="w-ev-ebitda">
-                                            </div>
-                                            <div class="form-group">
-                                                <label>P/E Weight</label>
-                                                <input type="number" step="0.01" id="w-pe">
-                                            </div>
-
-                                            <div class="form-group">
-                                                <label><input type="checkbox" id="recompute-on-save"> Recompute valuation on save</label>
-                                                <p class="small">When enabled, saving a company will automatically run the valuation and show results.</p>
-                                            </div>
-
-                                            <div class="form-actions">
-                                                <button type="button" class="btn-cancel" onclick="closeSettingsModal()">Cancel</button>
-                                                <button type="submit" class="btn-submit">Save Settings</button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-
                     <div class="form-section">
                         <h3>Financial Data</h3>
                         <div class="form-grid">
@@ -469,6 +450,56 @@
         <div class="loading-container">
             <div class="spinner"></div>
             <div class="loading-text" id="loading-text">Processing valuation...</div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content small">
+            <div class="modal-header">
+                <h2>Portfolio Settings</h2>
+                <span class="close" onclick="closeSettingsModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="settings-form">
+                    <div class="form-group">
+                        <label>Strong Buy Threshold (%)</label>
+                        <input type="number" step="0.1" id="th-strong-buy">
+                    </div>
+                    <div class="form-group">
+                        <label>Buy Threshold (%)</label>
+                        <input type="number" step="0.1" id="th-buy">
+                    </div>
+                    <div class="form-group">
+                        <label>Hold Threshold (%)</label>
+                        <input type="number" step="0.1" id="th-hold">
+                    </div>
+                    <div class="form-group">
+                        <label>Underweight Threshold (%)</label>
+                        <input type="number" step="0.1" id="th-underweight">
+                    </div>
+                    <div class="form-group">
+                        <label>DCF Weight</label>
+                        <input type="number" step="0.01" id="w-dcf">
+                    </div>
+                    <div class="form-group">
+                        <label>EV/EBITDA Weight</label>
+                        <input type="number" step="0.01" id="w-ev-ebitda">
+                    </div>
+                    <div class="form-group">
+                        <label>P/E Weight</label>
+                        <input type="number" step="0.01" id="w-pe">
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" id="recompute-on-save"> Recompute valuation on save</label>
+                        <p class="small">When enabled, saving a company will automatically run the valuation and show results.</p>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-cancel" onclick="closeSettingsModal()">Cancel</button>
+                        <button type="submit" class="btn-submit">Save Settings</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 

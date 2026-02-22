@@ -47,6 +47,25 @@ class Config:
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
     LOG_FILE = 'logs/app.log'
 
+    # Data Provider API Keys
+    ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+    FRED_API_KEY = os.environ.get('FRED_API_KEY', '')
+
+    # Data Provider Settings
+    DATA_PROVIDER = os.environ.get('DATA_PROVIDER', 'alpha_vantage')  # 'alpha_vantage' or 'yfinance'
+    ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query'
+    FRED_BASE_URL = 'https://api.stlouisfed.org/fred'
+
+    # Cache durations (seconds)
+    COMPANY_DATA_CACHE_DURATION = int(os.environ.get('COMPANY_CACHE_DURATION', '21600'))  # 6 hours
+    TREASURY_RATE_CACHE_DURATION = int(os.environ.get('TREASURY_CACHE_DURATION', '86400'))  # 24 hours
+    PRICE_CACHE_DURATION = int(os.environ.get('PRICE_CACHE_DURATION', '600'))  # 10 minutes
+
+    # API Rate Limiting
+    API_REQUEST_DELAY = float(os.environ.get('API_REQUEST_DELAY', '12.0'))  # 12s for Alpha Vantage (5 calls/min)
+    CIRCUIT_BREAKER_THRESHOLD = int(os.environ.get('CIRCUIT_BREAKER_THRESHOLD', '3'))
+    CIRCUIT_BREAKER_DURATION = int(os.environ.get('CIRCUIT_BREAKER_DURATION', '300'))  # 5 minutes
+
     # Recommendation thresholds (percentages)
     RECOMMENDATION_THRESHOLDS = {
         'strong_buy': float(os.environ.get('THRESH_STRONG_BUY', '20')),  # >= 20%

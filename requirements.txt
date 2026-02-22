@@ -1,9 +1,10 @@
 flask==3.0.0
 pydantic==2.10.3
-yfinance==0.2.40
+alpha-vantage==2.3.1
 pandas==2.2.0
 numpy==1.26.4
 requests==2.31.0
+python-dotenv==1.0.0
 
 # Phase 0: Foundation - PostgreSQL & Security
 psycopg2-binary==2.9.9

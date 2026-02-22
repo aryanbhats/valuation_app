@@ -1,11 +1,10 @@
 """
 Real-time Stock Price Service
-Fetches current market prices for portfolio companies
+Fetches current market prices for portfolio companies using Alpha Vantage
 """
 
-import yfinance as yf
-import time
 import requests
+import time
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -18,7 +17,12 @@ logger = logging.getLogger(__name__)
 class RealtimePriceService:
     def __init__(self):
         self.conn = None
-        # Note: Not using custom session - yfinance handles its own session internally
+        self.api_key = Config.ALPHA_VANTAGE_API_KEY
+        if not self.api_key:
+            raise ValueError("ALPHA_VANTAGE_API_KEY not configured")
+        
+        self.base_url = Config.ALPHA_VANTAGE_BASE_URL
+        self.request_delay = Config.API_REQUEST_DELAY  # 12 seconds between requests
 
     def get_connection(self):
         """Get database connection"""
@@ -34,7 +38,7 @@ class RealtimePriceService:
 
     def get_current_price(self, ticker: str) -> Optional[float]:
         """
-        Fetch current stock price from Yahoo Finance
+        Fetch current stock price from Alpha Vantage GLOBAL_QUOTE endpoint
 
         Args:
             ticker: Stock ticker symbol
@@ -43,18 +47,34 @@ class RealtimePriceService:
             Current price or None if error
         """
         try:
-            # Fetch closing price - no delay needed for daily updates
-            stock = yf.Ticker(ticker)
-            data = stock.history(period='1d')
-
-            if data.empty:
-                # Fallback to info if history fails
-                info = stock.info
-                return info.get('currentPrice') or info.get('regularMarketPrice')
-
-            # Get most recent price
-            current_price = data['Close'].iloc[-1]
-            return float(current_price)
+            # Use GLOBAL_QUOTE for current price (most efficient)
+            params = {
+                'function': 'GLOBAL_QUOTE',
+                'symbol': ticker,
+                'apikey': self.api_key
+            }
+            
+            response = requests.get(self.base_url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Check for API limit errors
+            if 'Error Message' in data:
+                logger.error(f"Alpha Vantage error for {ticker}: {data['Error Message']}")
+                return None
+            
+            if 'Note' in data:
+                logger.warning(f"Alpha Vantage API limit reached: {data['Note']}")
+                return None
+            
+            if 'Global Quote' in data and data['Global Quote']:
+                # Field '05. price' contains current price
+                price_str = data['Global Quote'].get('05. price')
+                if price_str:
+                    return float(price_str)
+            
+            logger.warning(f"No price data returned for {ticker}")
+            return None
 
         except Exception as e:
             logger.error(f"Error fetching price for {ticker}: {e}")
@@ -90,9 +110,13 @@ class RealtimePriceService:
 
             updated_prices = []
 
-            for company in companies:
+            for i, company in enumerate(companies):
                 ticker = company['ticker']
                 current_price = self.get_current_price(ticker)
+                
+                # Add delay between requests to respect Alpha Vantage rate limit (5 calls/min)
+                if i < len(companies) - 1:  # Don't delay after the last company
+                    time.sleep(self.request_delay)
 
                 if current_price:
                     # Update market cap based on current price
