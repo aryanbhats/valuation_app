@@ -1,4 +1,46 @@
-// AXIOM — Animated wave grid (dark mode only)
+// AXIOM — v6: Wave grid + 3D card tilt + mouse spotlight
+
+// ── 3D tilt + spotlight on company cards ───────────────────────
+(function () {
+    const TILT_MAX = 5; // degrees
+
+    function onMove(e) {
+        const card = e.currentTarget;
+        const r = card.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        const y = e.clientY - r.top;
+        const rx = -((y - r.height / 2) / (r.height / 2)) * TILT_MAX;
+        const ry = ((x - r.width  / 2) / (r.width  / 2)) * TILT_MAX;
+        card.style.setProperty('--rx', rx.toFixed(2) + 'deg');
+        card.style.setProperty('--ry', ry.toFixed(2) + 'deg');
+        card.style.setProperty('--mx', x.toFixed(0) + 'px');
+        card.style.setProperty('--my', y.toFixed(0) + 'px');
+        card.classList.add('tilt-active');
+    }
+
+    function onLeave(e) {
+        const card = e.currentTarget;
+        card.style.setProperty('--rx', '0deg');
+        card.style.setProperty('--ry', '0deg');
+        card.classList.remove('tilt-active');
+    }
+
+    function attachTilt() {
+        document.querySelectorAll('.company-card').forEach(card => {
+            if (card._tilt) return;
+            card._tilt = true;
+            card.addEventListener('mousemove', onMove, { passive: true });
+            card.addEventListener('mouseleave', onLeave);
+        });
+    }
+
+    // Attach now and watch for cards added by JS rendering
+    attachTilt();
+    const mo = new MutationObserver(attachTilt);
+    mo.observe(document.body, { childList: true, subtree: true });
+})();
+
+// ── Animated wave grid (dark mode only) ────────────────────────
 (function () {
     const canvas = document.createElement('canvas');
     canvas.id = 'axiom-particle-canvas';
@@ -19,14 +61,14 @@
     let mouse = { x: -9999, y: -9999 };
 
     // Grid config
-    const COLS        = 24;      // vertical lines
-    const ROWS        = 16;      // horizontal lines
+    const COLS        = 18;      // vertical lines
+    const ROWS        = 12;      // horizontal lines
     const WAVE_AMP    = 18;      // how much nodes shift in px
     const WAVE_SPEED  = 0.0008;  // animation speed
-    const MOUSE_R     = 200;     // mouse influence radius in px
-    const MOUSE_STR   = 45;      // max px push from mouse
-    const LINE_ALPHA  = 0.38;    // base line opacity
-    const LINE_WIDTH  = 1.0;
+    const MOUSE_R     = 220;     // mouse influence radius in px
+    const MOUSE_STR   = 50;      // max px push from mouse
+    const LINE_ALPHA  = 0.55;    // base line opacity
+    const LINE_WIDTH  = 1.1;
 
     function resize() {
         W = canvas.width  = window.innerWidth;

@@ -1,13 +1,33 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DCF Analysis | AXIOM</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles_professional.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles_professional.css') }}?v=21">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         body { background: var(--bg-secondary); min-height: 100vh; }
+
+        /* Lift muted text contrast site-wide on this page so labels stay readable */
+        [data-theme="dark"] {
+            --text-secondary: rgba(255,255,255,0.78);
+            --text-muted:     rgba(255,255,255,0.62);
+            --text-tertiary:  rgba(255,255,255,0.58);
+        }
+
+        /* Solid surfaces for opaque cards above the wave grid */
+        [data-theme="dark"] .page-nav,
+        [data-theme="dark"] .company-header,
+        [data-theme="dark"] .summary-bar,
+        [data-theme="dark"] .content-card { background: #0c0c14; }
+        [data-theme="dark"] .content-card,
+        [data-theme="dark"] .page-nav,
+        [data-theme="dark"] .company-header,
+        [data-theme="dark"] .summary-bar { position: relative; z-index: 1; }
+
+        /* Page-level layering: particle canvas sits at z-index:0, content above */
+        body > *:not(#axiom-particle-canvas):not(#dcf-tip) { position: relative; z-index: 1; }
 
         .page-nav {
             background: var(--bg-primary);
@@ -186,21 +206,21 @@
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background: #7c3aed;
+            background: #4f9eff;
             border: 2px solid #fff;
             box-shadow: 0 1px 4px rgba(0,0,0,0.25);
             cursor: pointer;
             transition: background 0.15s, transform 0.1s;
         }
         input[type="range"]::-webkit-slider-thumb:hover {
-            background: #6d28d9;
+            background: #2563eb;
             transform: scale(1.15);
         }
         input[type="range"]::-moz-range-thumb {
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background: #7c3aed;
+            background: #4f9eff;
             border: 2px solid #fff;
             box-shadow: 0 1px 4px rgba(0,0,0,0.25);
             cursor: pointer;
@@ -208,18 +228,18 @@
         input[type="range"]::-webkit-slider-runnable-track {
             height: 4px;
             border-radius: 2px;
-            background: rgba(124, 58, 237, 0.28);
+            background: rgba(79, 158, 255, 0.30);
         }
         [data-theme="dark"] input[type="range"]::-webkit-slider-runnable-track {
-            background: rgba(124, 58, 237, 0.45);
+            background: rgba(79, 158, 255, 0.50);
         }
         input[type="range"]::-moz-range-track {
             height: 4px;
             border-radius: 2px;
-            background: rgba(124, 58, 237, 0.28);
+            background: rgba(79, 158, 255, 0.30);
         }
         [data-theme="dark"] input[type="range"]::-moz-range-track {
-            background: rgba(124, 58, 237, 0.45);
+            background: rgba(79, 158, 255, 0.50);
         }
 
         /* Custom hover tooltip */
@@ -305,5 +325,6 @@
 
     <div id="dcf-tip"></div>
     <script src="{{ url_for('static', filename='js/dcf_detail.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/particles.js') }}?v=8"></script>
 </body>
 </html>

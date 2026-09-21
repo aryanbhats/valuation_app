@@ -32,6 +32,36 @@ class RealtimePriceService:
         )
         return self.conn
 
+    def get_quote(self, ticker: str) -> Optional[Dict]:
+        """
+        Fetch current price + previous close for daily % change.
+
+        Returns: {price, prev_close, change_pct} or None
+        """
+        try:
+            stock = yf.Ticker(ticker)
+            data = stock.history(period='2d')
+
+            if data is None or data.empty or len(data) < 1:
+                info = stock.info or {}
+                price = info.get('currentPrice') or info.get('regularMarketPrice')
+                prev = info.get('regularMarketPreviousClose') or info.get('previousClose')
+                if price and prev:
+                    return {
+                        'price': float(price),
+                        'prev_close': float(prev),
+                        'change_pct': (float(price) - float(prev)) / float(prev) * 100.0,
+                    }
+                return None
+
+            price = float(data['Close'].iloc[-1])
+            prev = float(data['Close'].iloc[-2]) if len(data) >= 2 else float(data['Open'].iloc[-1])
+            change_pct = (price - prev) / prev * 100.0 if prev else 0.0
+            return {'price': price, 'prev_close': prev, 'change_pct': change_pct}
+        except Exception as e:
+            logger.error(f"Error fetching quote for {ticker}: {e}")
+            return None
+
     def get_current_price(self, ticker: str) -> Optional[float]:
         """
         Fetch current stock price from Yahoo Finance

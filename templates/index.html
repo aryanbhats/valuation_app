@@ -4,13 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AXIOM — Institutional Investment Intelligence</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles_professional.css') }}?v=12">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/ticker_add.css') }}?v=2">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles_professional.css') }}?v=23">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ticker_add.css') }}?v=3">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Chart.js for visualizations -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- Plotly for football field chart -->
-    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -186,17 +184,6 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-header">
-                        <div class="stat-label">Avg ROE</div>
-                        <div class="stat-trend positive" id="roe-trend">
-                            <span>↑</span>
-                            <span>0%</span>
-                        </div>
-                    </div>
-                    <div class="stat-value" id="avg-roe">0%</div>
-                    <div class="stat-subtitle">Return on equity</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
                         <div class="stat-label">Avg WACC</div>
                         <div class="stat-trend" id="wacc-trend">
                             <span>—</span>
@@ -228,7 +215,6 @@
                             <th>Sector</th>
                             <th>Companies</th>
                             <th>Avg Upside</th>
-                            <th>Avg ROE</th>
                             <th>Avg P/E</th>
                             <th style="text-align: right;">Performance</th>
                         </tr>
@@ -256,14 +242,12 @@
                         <option value="name">Sort: Name (A-Z)</option>
                         <option value="upside-desc">Sort: Upside (High-Low)</option>
                         <option value="upside-asc">Sort: Upside (Low-High)</option>
-                        <option value="roe-desc">Sort: ROE (High-Low)</option>
                         <option value="pe-asc">Sort: P/E (Low-High)</option>
                         <option value="sector">Sort: Sector</option>
                     </select>
                 </div>
                 <div class="toolbar-group">
                     <button class="btn-select" id="select-mode-btn" onclick="toggleSelectMode()">Select</button>
-                    <button class="btn-primary" onclick="showAddCompanyModal()">+ Add Company</button>
                 </div>
             </div>
 
@@ -725,7 +709,6 @@
                 <div style="display:none;gap:0;border-bottom:2px solid var(--border-color);margin-bottom:20px;overflow-x:auto;">
                     <button class="axiom-vtab active" data-tab="vtab-dcf" onclick="switchValTab('vtab-dcf',this)" style="padding:8px 20px;border:none;background:transparent;cursor:pointer;font-weight:600;border-bottom:2px solid #3b82f6;color:#3b82f6;white-space:nowrap;">DCF Analysis</button>
                     <button class="axiom-vtab" data-tab="vtab-lbo" onclick="switchValTab('vtab-lbo',this)" style="display:none">LBO Model</button>
-                    <button class="axiom-vtab" data-tab="vtab-ff" onclick="switchValTab('vtab-ff',this)" style="display:none">Football Field</button>
                     <button class="axiom-vtab" data-tab="vtab-sens" onclick="switchValTab('vtab-sens',this)" style="display:none">Sensitivity</button>
                     <button class="axiom-vtab" data-tab="vtab-peers" onclick="switchValTab('vtab-peers',this)" style="display:none">Peers</button>
                     <button class="axiom-vtab" data-tab="vtab-ai" onclick="switchValTab('vtab-ai',this)" style="display:none">AI Analyst</button>
@@ -763,13 +746,6 @@
                             <button onclick="runLBOAnalysis()" style="padding:8px 20px;background:#1d4ed8;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;height:36px;align-self:flex-end;">Run LBO</button>
                         </div>
                         <div id="axiom-lbo-results" style="color:var(--text-muted);font-size:14px;">Enter inputs above and click Run LBO.</div>
-                    </div>
-                </div>
-
-                <div id="vtab-ff" class="axiom-vtab-pane" style="display:none;">
-                    <div id="axiom-ff-container">
-                        <div id="axiom-ff-chart" style="height:320px;"></div>
-                        <div id="axiom-ff-table" style="margin-top:16px;"></div>
                     </div>
                 </div>
 
@@ -899,10 +875,10 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=41"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=44"></script>
     <script src="{{ url_for('static', filename='js/ticker_add.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/macro_controls.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/axiom_ui.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/particles.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/axiom_ui.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/particles.js') }}?v=8"></script>
 </body>
 </html>

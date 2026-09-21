@@ -57,10 +57,10 @@ logger.info("Phase 1 API endpoints registered (31 endpoints)")
 register_advanced_routes(app)
 logger.info("Advanced API endpoints registered (ticker import, portfolio construction, assumption overrides)")
 
-# Register AXIOM Phase 1-5 routes (LBO, football field, sensitivity, exports, live stream)
+# Register AXIOM Phase 1-5 routes (LBO, sensitivity, exports, live stream)
 from axiom_api_endpoints import register_axiom_routes
 register_axiom_routes(app)
-logger.info("AXIOM Phase 1-5 routes registered (LBO, football field, sensitivity, exports, alerts, live stream)")
+logger.info("AXIOM Phase 1-5 routes registered (LBO, sensitivity, exports, alerts, live stream)")
 
 # ── Daily end-of-day price update scheduler ───────────────────────────────────
 try:
@@ -1412,6 +1412,43 @@ def get_realtime_prices():
 
     except Exception as e:
         logger.error(f"Error fetching realtime prices: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/prices/quotes', methods=['GET'])
+def get_portfolio_quotes():
+    """
+    Daily-change quotes for ticker bar.
+    Query: ?tickers=AAPL,MSFT  (optional; defaults to portfolio)
+    Returns: [{ticker, price, change_pct}, ...]
+    """
+    try:
+        price_service = get_price_service()
+        tickers_param = request.args.get('tickers', '').strip()
+
+        if tickers_param:
+            tickers = [t.strip().upper() for t in tickers_param.split(',') if t.strip()]
+        else:
+            conn = price_service.get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT ticker FROM companies WHERE ticker IS NOT NULL AND ticker <> ''")
+            tickers = [row['ticker'] for row in cur.fetchall()]
+            cur.close()
+
+        quotes = []
+        for t in tickers:
+            q = price_service.get_quote(t)
+            if q:
+                quotes.append({
+                    'ticker': t,
+                    'price': round(q['price'], 2),
+                    'change_pct': round(q['change_pct'], 2),
+                })
+
+        return jsonify({'success': True, 'quotes': quotes,
+                        'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        logger.error(f"Error fetching quotes: {e}")
         return jsonify({'error': str(e)}), 500
 
 

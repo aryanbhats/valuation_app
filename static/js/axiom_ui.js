@@ -1,6 +1,6 @@
 /**
  * AXIOM UI — Phase 3 JavaScript
- * LBO, Football Field, Sensitivity, FRED live rates, exports, alerts, mode toggle, anomalies
+ * LBO, Sensitivity, FRED live rates, exports, alerts, mode toggle, anomalies
  */
 
 'use strict';
@@ -50,8 +50,7 @@ function axiomKeyShortcuts(e) {
     }
     if (e.key === 'F1' && !e.metaKey) { e.preventDefault(); switchValTab('vtab-dcf'); }
     if (e.key === 'F2' && !e.metaKey) { e.preventDefault(); switchValTab('vtab-lbo'); }
-    if (e.key === 'F3' && !e.metaKey) { e.preventDefault(); switchValTab('vtab-ff'); }
-    if (e.key === 'F4' && !e.metaKey) { e.preventDefault(); switchValTab('vtab-sens'); }
+    if (e.key === 'F3' && !e.metaKey) { e.preventDefault(); switchValTab('vtab-sens'); }
 }
 
 // ── Add Alerts to nav ─────────────────────────────────────────────────────────
@@ -114,15 +113,37 @@ function showTickerBar() {
     if (bar) bar.style.display = '';
 }
 
-function updateTickerCompanies(companies) {
-    _tickerCompanies = (companies || [])
-        .filter(c => c.fair_value && c.current_price)
-        .map(c => ({
-            ticker:  c.ticker || c.name,
-            fairVal: c.fair_value,
-            price:   c.current_price,
-            upside:  c.upside || 0,
+async function updateTickerCompanies(companies) {
+    const tickers = (companies || [])
+        .map(c => c.ticker)
+        .filter(Boolean);
+
+    if (tickers.length === 0) {
+        _tickerCompanies = [];
+        buildTicker();
+        return;
+    }
+
+    try {
+        const url = '/api/prices/quotes?tickers=' + encodeURIComponent(tickers.join(','));
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('quote fetch failed');
+        const data = await resp.json();
+        _tickerCompanies = (data.quotes || []).map(q => ({
+            ticker:    q.ticker,
+            price:     q.price,
+            changePct: q.change_pct,
         }));
+    } catch (e) {
+        console.debug('AXIOM: quote fetch failed, falling back to current_price', e.message);
+        _tickerCompanies = (companies || [])
+            .filter(c => c.current_price)
+            .map(c => ({
+                ticker: c.ticker || c.name,
+                price: c.current_price,
+                changePct: null,
+            }));
+    }
     buildTicker();
 }
 
@@ -145,15 +166,19 @@ function buildTicker() {
     if (_tickerCompanies.length > 0) {
         items.push(`<span class="ticker-sep"></span>`);
 
-        // Company items
         _tickerCompanies.forEach(c => {
-            const uClass = c.upside >= 0 ? 'positive' : 'negative';
-            const sign   = c.upside >= 0 ? '+' : '';
+            const ch = (c.changePct == null) ? null : Number(c.changePct);
+            let cls = 'flat', sign = '', txt = '—';
+            if (ch != null && !Number.isNaN(ch)) {
+                if (ch > 0) { cls = 'up';   sign = '+'; }
+                else if (ch < 0) { cls = 'down'; }
+                txt = `${sign}${ch.toFixed(2)}%`;
+            }
             items.push(`
                 <span class="ticker-item">
                     <span class="ticker-label">${c.ticker}</span>
                     <strong class="ticker-value">$${(+c.price).toFixed(2)}</strong>
-                    <span class="ticker-upside ${uClass}">${sign}${(+c.upside).toFixed(1)}%</span>
+                    <span class="ticker-change ${cls}">${txt}</span>
                 </span>`);
         });
     }
@@ -163,7 +188,6 @@ function buildTicker() {
         return;
     }
 
-    // Duplicate content for seamless infinite scroll
     const html = items.join('');
     track.innerHTML = html + html;
 }
@@ -328,10 +352,6 @@ function switchValTab(tabId, btn) {
     // Lazy-load content on first switch
     if (tabId === 'vtab-lbo' && currentValuationCompanyId) {
         // LBO inputs are manual — just show the form
-    } else if (tabId === 'vtab-ff' && currentValuationCompanyId) {
-        if (!document.getElementById('axiom-ff-chart').children.length) {
-            loadFootballField(currentValuationCompanyId);
-        }
     } else if (tabId === 'vtab-sens' && currentValuationCompanyId) {
         if (!document.getElementById('axiom-sens-table').innerHTML.trim()) {
             loadSensitivityTable(currentValuationCompanyId);
@@ -527,103 +547,6 @@ function renderLBOResults(lbo, container) {
     container.innerHTML = html;
 }
 
-// ── Football Field ────────────────────────────────────────────────────────────
-async function loadFootballField(companyId) {
-    const chartEl = document.getElementById('axiom-ff-chart');
-    const tableEl = document.getElementById('axiom-ff-table');
-    if (!chartEl) return;
-    chartEl.innerHTML = '<p style="color:var(--text-muted);padding:20px;">Loading football field...</p>';
-
-    try {
-        const resp = await fetch(`/api/company/${companyId}/football-field`);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        renderFootballField(data, chartEl, tableEl);
-    } catch (e) {
-        chartEl.innerHTML = `<p style="color:#ef4444;">Football field error: ${e.message}</p>`;
-    }
-}
-
-function renderFootballField(data, chartEl, tableEl) {
-    const ranges = (data.ranges || []).filter(r => r.available);
-    const gapRanges = (data.ranges || []).filter(r => !r.available);
-    const currentPrice = data.current_price;
-
-    if (!ranges.length) {
-        chartEl.innerHTML = '<p style="color:var(--text-muted);">No valuation range data available.</p>';
-        return;
-    }
-
-    // Build Plotly horizontal bar chart
-    const methods = ranges.map(r => r.method);
-    const lows = ranges.map(r => r.low);
-    const highs = ranges.map(r => r.high);
-    const mids = ranges.map(r => (r.low + r.high) / 2);
-
-    const plotData = [
-        // Invisible base bars
-        {
-            type: 'bar', orientation: 'h',
-            x: lows, y: methods,
-            marker: { color: 'rgba(0,0,0,0)' },
-            showlegend: false, hoverinfo: 'skip',
-        },
-        // Visible range bars
-        {
-            type: 'bar', orientation: 'h',
-            x: ranges.map(r => r.high - r.low), y: methods,
-            marker: { color: 'rgba(59,130,246,0.65)', line: { color: 'rgba(59,130,246,1)', width: 1 } },
-            text: ranges.map(r => `$${r.low.toFixed(0)} – $${r.high.toFixed(0)}`),
-            textposition: 'outside',
-            hovertemplate: '%{y}: $%{base:.2f} – $%{x:.2f}<extra>%{customdata}</extra>',
-            customdata: ranges.map(r => r.source),
-            base: lows,
-            showlegend: false,
-        }
-    ];
-
-    const layout = {
-        paper_bgcolor: 'transparent',
-        plot_bgcolor: 'transparent',
-        height: 280,
-        margin: { l: 160, r: 80, t: 20, b: 40 },
-        xaxis: {
-            title: 'Implied Value per Share ($)',
-            tickprefix: '$',
-            gridcolor: 'rgba(150,150,150,0.15)',
-        },
-        yaxis: { autorange: 'reversed' },
-        shapes: currentPrice ? [{
-            type: 'line', x0: currentPrice, x1: currentPrice, y0: -0.5, y1: methods.length - 0.5,
-            line: { color: '#ef4444', width: 2, dash: 'dot' },
-        }] : [],
-        annotations: currentPrice ? [{
-            x: currentPrice, y: methods.length - 0.5, text: `$${currentPrice.toFixed(1)}<br>Market`,
-            showarrow: false, font: { color: '#ef4444', size: 10 }, xanchor: 'center', yanchor: 'top',
-        }] : [],
-    };
-
-    chartEl.innerHTML = '';
-    if (typeof Plotly !== 'undefined') {
-        Plotly.newPlot(chartEl, plotData, layout, { displayModeBar: false, responsive: true });
-    } else {
-        chartEl.innerHTML = '<p style="color:var(--text-muted);">Plotly not loaded — refresh page.</p>';
-    }
-
-    // Gap disclosures table
-    if (tableEl && gapRanges.length) {
-        tableEl.innerHTML = `
-            <div style="padding:12px 16px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:6px;">
-                <div style="font-size:12px;font-weight:600;color:#ef4444;margin-bottom:8px;">Data Gaps</div>
-                ${gapRanges.map(r => `
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">
-                        <strong>${r.method}:</strong> ${r.gap_reason || 'Data unavailable'}
-                    </div>
-                `).join('')}
-            </div>`;
-    }
-}
-
 // ── Sensitivity Table ─────────────────────────────────────────────────────────
 async function loadSensitivityTable(companyId) {
     const container = document.getElementById('axiom-sens-table');
@@ -716,6 +639,8 @@ if (_origShowView) {
     window.showView = function(viewName) {
         const alertsView = document.getElementById('alerts-view');
         if (alertsView) alertsView.style.display = 'none';
+
+        document.body.setAttribute('data-view', viewName);
 
         if (viewName === 'alerts') {
             // Hide all other view-sections

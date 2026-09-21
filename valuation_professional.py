@@ -660,7 +660,9 @@ def enhanced_dcf_valuation(company_data):
 	for nm in ('bear', 'base', 'bull'):
 		s = scenarios[nm]
 		print(f"    {nm.capitalize():4s}  WACC={s['wacc']*100:.2f}%  TG={s['terminal_growth']*100:.2f}%  gY1={s['growth_y1']*100:.2f}%  →  ${s['blended_equity_value']:,.0f} (${s['blended_price_per_share']:.2f}/share)")
-	print(f"    Spread (bull−bear)/base = {scenarios['spread_pct']:.1f}%")
+	_spread = scenarios.get('spread_pct')
+	_spread_str = f"{_spread:.1f}%" if _spread is not None else "n/a (base ≤ 0)"
+	print(f"    Spread (bull−bear)/base = {_spread_str}")
 	
 	print(f"{'=' * 80}\n")
 	

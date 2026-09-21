@@ -1,6 +1,6 @@
 """
 AXIOM Phase 1-5 API Endpoints
-New routes: LBO, football field, sensitivity, exports, live stream, data layer, alerts.
+New routes: LBO, sensitivity, exports, live stream, data layer, alerts.
 Register with: register_axiom_routes(app)
 """
 
@@ -239,50 +239,6 @@ def register_axiom_routes(app):
             return jsonify({'error': str(e)}), 400
         except Exception as e:
             logger.error(f'LBO failed for company {company_id}: {e}', exc_info=True)
-            return jsonify({'error': str(e)}), 500
-
-    # ── Football Field ────────────────────────────────────────────────────────
-
-    @app.route('/api/company/<int:company_id>/football-field', methods=['GET'])
-    def get_football_field(company_id):
-        """Return football field valuation ranges with source attribution."""
-        try:
-            conn, ph = _get_db()
-            cur = conn.cursor()
-            cur.execute(f"""
-                SELECT c.name, c.sector, cf.revenue, cf.ebitda, cf.shares_outstanding,
-                       vr.dcf_price_per_share, vr.final_price_per_share,
-                       vr.current_price, vr.wacc
-                FROM companies c
-                JOIN company_financials cf ON c.id = cf.company_id
-                LEFT JOIN valuation_results vr ON c.id = vr.company_id
-                WHERE c.id = {ph}
-                ORDER BY vr.id DESC
-                LIMIT 1
-            """, (company_id,))
-            row = _row_to_dict(cur.fetchone())
-            conn.close()
-
-            if not row:
-                return jsonify({'error': f'Company {company_id} not found'}), 404
-
-            current_price = float(row.get('current_price') or 0)
-            dcf_value = float(row.get('dcf_price_per_share') or 0)
-
-            from football_field import build_football_field
-            valuation_results = {
-                'dcf_value': dcf_value,
-                'fair_value': dcf_value,
-                'bear_value': dcf_value * 0.80 if dcf_value else None,
-                'bull_value': dcf_value * 1.20 if dcf_value else None,
-                'current_price': current_price,
-            }
-            row['current_price'] = current_price
-            result = build_football_field(row, valuation_results)
-            return jsonify(result)
-
-        except Exception as e:
-            logger.error(f'Football field failed for company {company_id}: {e}')
             return jsonify({'error': str(e)}), 500
 
     # ── Sensitivity Table ─────────────────────────────────────────────────────
@@ -1212,4 +1168,4 @@ def register_axiom_routes(app):
         return Response(generate(), mimetype='text/event-stream',
                         headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
-    logger.info("AXIOM routes registered: macro, lbo, football-field, sensitivity, export, stream, alerts, portfolio, share + AI: assumption-suggestions, smart-money, commentary, thesis, anomalies/explain, ingest-docs, ask, docs, agent/analyze")
+    logger.info("AXIOM routes registered: macro, lbo, sensitivity, export, stream, alerts, portfolio, share + AI: assumption-suggestions, smart-money, commentary, thesis, anomalies/explain, ingest-docs, ask, docs, agent/analyze")

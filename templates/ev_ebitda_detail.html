@@ -1,13 +1,24 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EV/EBITDA Analysis | AXIOM</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles_professional.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles_professional.css') }}?v=21">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         body { background: var(--bg-secondary); min-height: 100vh; }
+
+        [data-theme="dark"] {
+            --text-secondary: rgba(255,255,255,0.78);
+            --text-muted:     rgba(255,255,255,0.62);
+            --text-tertiary:  rgba(255,255,255,0.58);
+        }
+        [data-theme="dark"] .page-nav,
+        [data-theme="dark"] .company-header,
+        [data-theme="dark"] .summary-bar,
+        [data-theme="dark"] .content-card { background: #0c0c14; }
+        body > *:not(#axiom-particle-canvas):not(#dcf-tip) { position: relative; z-index: 1; }
 
         .page-nav {
             background: var(--bg-primary);
@@ -226,5 +237,6 @@
 
     <div id="dcf-tip"></div>
     <script src="{{ url_for('static', filename='js/ev_ebitda_detail.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/particles.js') }}?v=8"></script>
 </body>
 </html>

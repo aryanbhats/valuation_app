@@ -129,7 +129,9 @@ function showView(viewName) {
     if (navLink) {
         navLink.classList.add('active');
     }
-    
+
+    document.body.setAttribute('data-view', viewName);
+
     if (viewName === 'dashboard') {
         loadDashboard();
     } else if (viewName === 'companies') {
@@ -152,7 +154,6 @@ async function loadDashboard() {
         document.getElementById('total-companies').textContent = stats.total_companies;
         document.getElementById('avg-upside').textContent = `${stats.avg_upside.toFixed(1)}%`;
         document.getElementById('avg-pe').textContent = `${stats.avg_pe.toFixed(1)}x`;
-        document.getElementById('avg-roe').textContent = `${stats.avg_roe.toFixed(1)}%`;
 
         const waccElement = document.getElementById('avg-wacc');
         if (waccElement) waccElement.textContent = `${(stats.avg_wacc || 0).toFixed(2)}%`;
@@ -172,38 +173,63 @@ function renderDistributionBar(stats) {
 
     const total = stats.total_companies || 0;
     if (total === 0) {
-        wrap.innerHTML = `<div class="dist-empty">Add companies to see portfolio breakdown</div>`;
+        wrap.innerHTML = `
+            <div class="dist-bar-header">
+                <span class="dist-bar-title">Portfolio Breakdown</span>
+            </div>
+            <div class="dist-empty">Add companies to see breakdown</div>`;
         return;
     }
 
     const buy  = stats.buy_count  || 0;
     const hold = stats.hold_count || 0;
     const sell = stats.sell_count || 0;
-    const none = total - buy - hold - sell;
+    const none = Math.max(0, total - buy - hold - sell);
+    const accounted = buy + hold + sell + none;
 
-    const buyPct  = (buy  / total) * 100;
-    const holdPct = (hold / total) * 100;
-    const sellPct = (sell / total) * 100;
-    const nonePct = (none / total) * 100;
+    // Donut math: r=54, circumference = 2*PI*54 ≈ 339.292
+    const R = 54;
+    const C = 2 * Math.PI * R;
+    const buyLen  = (buy  / accounted) * C;
+    const holdLen = (hold / accounted) * C;
+    const sellLen = (sell / accounted) * C;
 
-    const segLabel = (pct, label) => pct > 12 ? label : '';
+    let offset = 0;
+    const seg = (len, cls) => {
+        if (len <= 0) return '';
+        const dasharray = `${len} ${C - len}`;
+        const dashoffset = -offset;
+        offset += len;
+        return `<circle class="dist-gauge-seg ${cls}" cx="70" cy="70" r="${R}"
+                 stroke-dasharray="${dasharray}" stroke-dashoffset="${dashoffset}"></circle>`;
+    };
+
+    const pct = (n) => total > 0 ? Math.round((n / total) * 100) : 0;
 
     wrap.innerHTML = `
         <div class="dist-bar-header">
             <span class="dist-bar-title">Portfolio Breakdown</span>
             <span class="dist-bar-total">${total} compan${total === 1 ? 'y' : 'ies'}</span>
         </div>
-        <div class="dist-bar">
-            ${buyPct  > 0 ? `<div class="dist-seg buy"  style="flex:${buyPct}">${segLabel(buyPct,  buy + ' Buy')}</div>`  : ''}
-            ${holdPct > 0 ? `<div class="dist-seg hold" style="flex:${holdPct}">${segLabel(holdPct, hold + ' Hold')}</div>` : ''}
-            ${sellPct > 0 ? `<div class="dist-seg sell" style="flex:${sellPct}">${segLabel(sellPct, sell + ' Sell')}</div>` : ''}
-            ${nonePct > 0 ? `<div class="dist-seg" style="flex:${nonePct};background:var(--bg-tertiary);"></div>` : ''}
-        </div>
-        <div class="dist-legend">
-            ${buy  > 0 ? `<div class="dist-leg-item"><div class="dist-leg-dot buy"></div><span class="dist-leg-count">${buy}</span> Buy</div>`   : ''}
-            ${hold > 0 ? `<div class="dist-leg-item"><div class="dist-leg-dot hold"></div><span class="dist-leg-count">${hold}</span> Hold</div>` : ''}
-            ${sell > 0 ? `<div class="dist-leg-item"><div class="dist-leg-dot sell"></div><span class="dist-leg-count">${sell}</span> Sell</div>` : ''}
-            ${none > 0 ? `<div class="dist-leg-item" style="color:var(--text-tertiary)"><span class="dist-leg-count">${none}</span> Pending</div>` : ''}
+        <div class="dist-gauge-wrap">
+            <div class="dist-gauge">
+                <svg viewBox="0 0 140 140">
+                    <circle class="dist-gauge-track" cx="70" cy="70" r="${R}"></circle>
+                    ${seg(buyLen,  'buy')}
+                    ${seg(holdLen, 'hold')}
+                    ${seg(sellLen, 'sell')}
+                </svg>
+                <div class="dist-gauge-center">
+                    <div class="dist-gauge-num">${total}</div>
+                    <div class="dist-gauge-cap">Holdings</div>
+                </div>
+            </div>
+            <div class="dist-legend">
+                <div class="dist-leg-item"><div class="dist-leg-dot buy"></div><span class="dist-leg-count">${buy}</span><span>Buy</span><span class="dist-leg-pct">${pct(buy)}%</span></div>
+                <div class="dist-leg-item"><div class="dist-leg-dot hold"></div><span class="dist-leg-count">${hold}</span><span>Hold</span><span class="dist-leg-pct">${pct(hold)}%</span></div>
+                <div class="dist-leg-item"><div class="dist-leg-dot sell"></div><span class="dist-leg-count">${sell}</span><span>Sell</span><span class="dist-leg-pct">${pct(sell)}%</span></div>
+                ${none > 0 ? `<div class="dist-leg-item" style="opacity:0.7"><div class="dist-leg-dot" style="background:var(--t-dim)"></div><span class="dist-leg-count">${none}</span><span>Pending</span><span class="dist-leg-pct">${pct(none)}%</span></div>` : ''}
+            </div>
         </div>
     `;
 }
@@ -237,7 +263,6 @@ function updateTrendIndicators(stats) {
         { id: 'total-trend', value: 5 },
         { id: 'upside-trend', value: stats.avg_upside > 10 ? 2 : -1 },
         { id: 'pe-trend', value: 0 },
-        { id: 'roe-trend', value: stats.avg_roe > 15 ? 3 : -2 },
         { id: 'wacc-trend', value: 0 }
     ];
     
@@ -279,7 +304,6 @@ function renderSectorTable(sectors) {
                 <td><span class="sector-name">${sector.name}</span></td>
                 <td><span class="sector-count">${sector.count} companies</span></td>
                 <td><span class="sector-metric ${upsideClass}">${sector.avg_upside >= 0 ? '+' : ''}${sector.avg_upside.toFixed(1)}%</span></td>
-                <td><span class="sector-metric">${sector.avg_roe.toFixed(1)}%</span></td>
                 <td><span class="sector-metric">${sector.avg_pe ? sector.avg_pe.toFixed(1) + 'x' : 'N/A'}</span></td>
                 <td style="text-align: right;">
                     <div class="sector-bar">
@@ -305,8 +329,6 @@ function sortSectorBy(type) {
         sectors.sort((a, b) => b.avg_upside - a.avg_upside);
     } else if (type === 'count') {
         sectors.sort((a, b) => b.count - a.count);
-    } else if (type === 'roe') {
-        sectors.sort((a, b) => b.avg_roe - a.avg_roe);
     } else {
         sectors.sort((a, b) => a.name.localeCompare(b.name));
     }
@@ -357,8 +379,6 @@ function applyFiltersAndSort() {
                 return (b.upside || 0) - (a.upside || 0);
             case 'upside-asc':
                 return (a.upside || 0) - (b.upside || 0);
-            case 'roe-desc':
-                return (b.roe || 0) - (a.roe || 0);
             case 'pe-asc':
                 return (a.pe_ratio || 999) - (b.pe_ratio || 999);
             case 'sector':
@@ -1500,7 +1520,7 @@ function showValuationResults(result) {
                 ${result.company_type ? `<span style="font-size: 0.75rem; font-weight: 600; color: var(--accent-primary); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px;">${result.company_type.replace(/_/g,' ')}</span>` : ''}
                 ${result.sub_sector_tag ? `<span style="font-size: 0.75rem; color: var(--text-muted); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px;">${result.sub_sector_tag.replace(/_/g,' ')}</span>` : ''}
             </div>
-            <div class="method-card method-card-dcf" onclick="toggleDCFDetails()" style="padding: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; cursor: pointer;" title="Click to see full DCF breakdown">
+            <div class="method-card method-card-dcf bubble-underline" onclick="toggleDCFDetails()" style="padding: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; cursor: pointer;" title="Click to see full DCF breakdown">
                 <div>
                     <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">DCF Price / Share <span style="font-size: 0.6rem; color: var(--accent-primary);">↗ details</span></div>
                     <div style="font-size: 2rem; font-weight: 800; color: var(--accent-primary);">$${finalPS.toFixed(2)}</div>
@@ -1538,21 +1558,21 @@ function showValuationResults(result) {
             </div>
             <div style="display: grid; grid-template-columns: repeat(${[evImplied, peImplied, analystPS].filter(v => v > 0).length}, 1fr); gap: 1px; background: var(--border-color);">
                 ${evImplied > 0 ? `
-                <div class="method-card method-card-dcf" onclick="toggleEVEBITDADetails()" style="background: var(--bg-primary); padding: 16px; text-align: center; cursor: pointer;" title="Click for full EV/EBITDA breakdown">
+                <div class="method-card method-card-dcf bubble-underline" onclick="toggleEVEBITDADetails()" style="background: var(--bg-primary); padding: 16px; text-align: center; cursor: pointer;" title="Click for full EV/EBITDA breakdown">
                     <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">EV / EBITDA implied <span style="color:var(--accent-primary);">↗</span></div>
                     <div style="font-size: 1.4rem; font-weight: 700;">$${evImplied.toFixed(2)}</div>
                     <div style="font-size: 0.7rem; margin-top: 6px;">${upsideStr(evUpside)} vs market</div>
                     <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">${evMktMultiple}</div>
                 </div>` : ''}
                 ${peImplied > 0 ? `
-                <div class="method-card method-card-dcf" onclick="togglePEDetails()" style="background: var(--bg-primary); padding: 16px; text-align: center; cursor: pointer;" title="Click for full P/E breakdown">
+                <div class="method-card method-card-dcf bubble-underline" onclick="togglePEDetails()" style="background: var(--bg-primary); padding: 16px; text-align: center; cursor: pointer;" title="Click for full P/E breakdown">
                     <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">P/E implied <span style="color:var(--accent-primary);">↗</span></div>
                     <div style="font-size: 1.4rem; font-weight: 700;">$${peImplied.toFixed(2)}</div>
                     <div style="font-size: 0.7rem; margin-top: 6px;">${upsideStr(peUpside)} vs market</div>
                     <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">${peMktMultiple}</div>
                 </div>` : ''}
                 ${analystPS > 0 ? `
-                <div style="background: var(--bg-primary); padding: 16px; text-align: center;">
+                <div class="bubble-underline" style="background: var(--bg-primary); padding: 16px; text-align: center;">
                     <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Wall St. Consensus</div>
                     <div style="font-size: 1.4rem; font-weight: 700;">$${analystPS.toFixed(2)}</div>
                     <div style="font-size: 0.7rem; margin-top: 6px;">${upsideStr(wsUpside)} vs market</div>
@@ -1583,22 +1603,6 @@ function showValuationResults(result) {
             <div class="metric-item">
                 <div class="summary-label">FCF Yield</div>
                 <div class="summary-value">${result.fcf_yield ? result.fcf_yield.toFixed(2) + '%' : '—'}</div>
-            </div>
-            <div class="metric-item">
-                <div class="summary-label">ROE</div>
-                <div class="summary-value">${result.roe ? result.roe.toFixed(1) + '%' : '—'}</div>
-            </div>
-            <div class="metric-item">
-                <div class="summary-label">ROIC</div>
-                <div class="summary-value">${result.roic ? result.roic.toFixed(1) + '%' : '—'}</div>
-            </div>
-            <div class="metric-item">
-                <div class="summary-label">Debt / Equity</div>
-                <div class="summary-value">${result.debt_to_equity ? result.debt_to_equity.toFixed(2) + 'x' : '—'}</div>
-            </div>
-            <div class="metric-item">
-                <div class="summary-label">Altman Z-Score</div>
-                <div class="summary-value ${result.z_score >= 2.99 ? 'text-positive' : result.z_score < 1.81 ? 'text-negative' : ''}">${result.z_score ? result.z_score.toFixed(2) : '—'}</div>
             </div>
         </div>
 
